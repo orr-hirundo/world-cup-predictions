@@ -4,10 +4,10 @@
     "private": true,
     "homepage": "https://orr-hirundo.github.io/world-cup-predictions/",
     "scripts": {
-      "dev": "vite",
-      "build": "vite build",
-      "preview": "vite preview",
-      "deploy": "npm run build && gh-pages -d dist"
+        "dev": "vite",
+        "build": "vite build --base=/world-cup-predictions/",
+        "preview": "vite preview",
+        "deploy": "npm run build && gh-pages -d dist"
     },
     "dependencies": {
       "@vitejs/plugin-react": "^4.3.4",

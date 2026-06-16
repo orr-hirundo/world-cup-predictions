@@ -15,6 +15,70 @@ const GROUPS = {
   L: ["England", "Croatia", "Panama", "Ghana"]
 };
 
+const TEAM_FLAGS = {
+  "Mexico": "🇲🇽",
+  "South Korea": "🇰🇷",
+  "South Africa": "🇿🇦",
+  "Czechia": "🇨🇿",
+  "Canada": "🇨🇦",
+  "Switzerland": "🇨🇭",
+  "Qatar": "🇶🇦",
+  "Bosnia and Herzegovina": "🇧🇦",
+  "Brazil": "🇧🇷",
+  "Morocco": "🇲🇦",
+  "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+  "Haiti": "🇭🇹",
+  "United States": "🇺🇸",
+  "Paraguay": "🇵🇾",
+  "Australia": "🇦🇺",
+  "Türkiye": "🇹🇷",
+  "Germany": "🇩🇪",
+  "Ecuador": "🇪🇨",
+  "Ivory Coast": "🇨🇮",
+  "Curaçao": "🇨🇼",
+  "Netherlands": "🇳🇱",
+  "Japan": "🇯🇵",
+  "Tunisia": "🇹🇳",
+  "Sweden": "🇸🇪",
+  "Belgium": "🇧🇪",
+  "Iran": "🇮🇷",
+  "Egypt": "🇪🇬",
+  "New Zealand": "🇳🇿",
+  "Spain": "🇪🇸",
+  "Uruguay": "🇺🇾",
+  "Saudi Arabia": "🇸🇦",
+  "Cape Verde": "🇨🇻",
+  "France": "🇫🇷",
+  "Senegal": "🇸🇳",
+  "Norway": "🇳🇴",
+  "Iraq": "🇮🇶",
+  "Argentina": "🇦🇷",
+  "Austria": "🇦🇹",
+  "Algeria": "🇩🇿",
+  "Jordan": "🇯🇴",
+  "Portugal": "🇵🇹",
+  "Colombia": "🇨🇴",
+  "Uzbekistan": "🇺🇿",
+  "DR Congo": "🇨🇩",
+  "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+  "Croatia": "🇭🇷",
+  "Panama": "🇵🇦",
+  "Ghana": "🇬🇭"
+};
+
+function TeamName({ team }) {
+  if (!team) return <>TBD</>;
+
+  return (
+    <span className="team-with-flag">
+      <span className="flag" aria-hidden="true">
+        {TEAM_FLAGS[team] || "🏳️"}
+      </span>
+      <span>{team}</span>
+    </span>
+  );
+}
+
 const THIRD_PLACE_SLOTS = [
   { key: "3_ABCDF", allowedGroups: ["A", "B", "C", "D", "F"] },
   { key: "3_CDFGH", allowedGroups: ["C", "D", "F", "G", "H"] },
@@ -180,7 +244,7 @@ function Match({ id, a, b, winner, onPick }) {
         className={winner === a ? "team selected" : "team"}
         onClick={() => onPick(id, a)}
       >
-        {a || "TBD"}
+        <TeamName team={a} />
       </button>
       <button
         type="button"
@@ -188,7 +252,7 @@ function Match({ id, a, b, winner, onPick }) {
         className={winner === b ? "team selected" : "team"}
         onClick={() => onPick(id, b)}
       >
-        {b || "TBD"}
+        <TeamName team={b} />
       </button>
     </div>
   );
@@ -239,7 +303,9 @@ function GroupRanker({ group, ranking, onChange }) {
                 ☰
               </div>
   
-              <div className="team-name">{team}</div>
+              <div className="team-name">
+                <TeamName team={team} />
+              </div>
   
               <div className="rank-buttons">
                 <button
@@ -364,11 +430,11 @@ function GroupRanker({ group, ranking, onChange }) {
         <div className="match-id">{id}</div>
   
         <div className={winner === a ? "readonly-team winner-team" : "readonly-team"}>
-          {a || "TBD"}
+          <TeamName team={a} />
         </div>
   
         <div className={winner === b ? "readonly-team winner-team" : "readonly-team"}>
-          {b || "TBD"}
+          <TeamName team={b} />
         </div>
       </div>
     );
@@ -477,7 +543,9 @@ function GroupRanker({ group, ranking, onChange }) {
   
           <div className="readonly-champion">
             <span>Champion</span>
-            <strong>{details.champion || "TBD"}</strong>
+            <strong>{details.champion || "TBD"}</strong><strong>
+              <TeamName team={details.champion || "TBD"} />
+            </strong>
           </div>
         </div>
       </div>
@@ -504,7 +572,9 @@ function GroupRanker({ group, ranking, onChange }) {
   
           <div className="champion-card">
             <span>Champion pick</span>
-            <strong>{details.champion || "Not selected"}</strong>
+            <strong>
+              <TeamName team={details.champion || "Not selected"} />
+            </strong>
           </div>
         </div>
   
@@ -519,7 +589,9 @@ function GroupRanker({ group, ranking, onChange }) {
   
                   <ol>
                     {(ranking || []).map(team => (
-                      <li key={team}>{team}</li>
+                      <li key={team}>
+                        <TeamName team={team} />
+                      </li>
                     ))}
                   </ol>
                 </div>
@@ -534,7 +606,7 @@ function GroupRanker({ group, ranking, onChange }) {
               <div className="pill-row">
                 {details.thirdPlaceQualifyingGroups.map(group => (
                   <span className="pill" key={group}>
-                    Group {group}: {details.groups[group]?.[2] || "Unknown"}
+                    Group {group}: <TeamName team={details.groups[group]?.[2] || "Unknown"} />
                   </span>
                 ))}
               </div>
@@ -640,7 +712,9 @@ function AllGuesses({ submitUrl }) {
                   onClick={() => setSelectedSubmission(submission)}
                 >
                   <td>{submission.name || "Unknown"}</td>
-                  <td>{submission.champion || "Not selected"}</td>
+                  <td>
+                    <TeamName team={submission.champion || "Not selected"} />
+                  </td>
                   <td>{formatTimestampForUser(submission.timestamp)}</td>
                 </tr>
               ))}

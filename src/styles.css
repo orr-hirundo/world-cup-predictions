@@ -163,6 +163,25 @@
     overflow-wrap: anywhere;
   }
   
+  .team-with-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45em;
+    min-width: 0;
+    max-width: 100%;
+  }
+  
+  .team-with-flag span:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  
+  .flag {
+    flex: 0 0 auto;
+    font-size: 1.05em;
+    line-height: 1;
+  }
+
   .rank-buttons {
     display: flex;
     gap: 6px;

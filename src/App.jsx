@@ -79,6 +79,17 @@ function fetchJsonp(url) {
   });
 }
 
+function orderRoundOf32ForBracket(matches) {
+  const matchesById = Object.fromEntries(
+    (matches || []).map(match => [match.id, match])
+  );
+
+  return ROUND_OF_16_TEMPLATE
+    .flat()
+    .map(matchId => matchesById[matchId])
+    .filter(Boolean);
+}
+
 function defaultRankings() {
   return Object.fromEntries(
     Object.entries(GROUPS).map(([group, teams]) => [group, [...teams]])
@@ -288,86 +299,358 @@ function GroupRanker({ group, ranking, onChange }) {
     return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")}:${get("second")} ${get("timeZoneName")}`;
   }
 
-  function AllGuesses({ submitUrl }) {
-    const [loading, setLoading] = useState(false);
-    const [submissions, setSubmissions] = useState([]);
-    const [error, setError] = useState("");
+  function safeJsonParse(value, fallback) {
+    if (!value) return fallback;
   
-    async function loadSubmissions() {
-      try {
-        setLoading(true);
-        setError("");
-  
-        if (!submitUrl) {
-          throw new Error("No Google Sheets URL is configured.");
-        }
-  
-        const data = await fetchJsonp(`${submitUrl}?type=submissions`);
-  
-        if (!data.ok) {
-          throw new Error(data.error || "Could not read submissions.");
-        }
-  
-        setSubmissions(data.submissions || []);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
+    if (typeof value === "object") {
+      return value;
     }
   
-    useEffect(() => {
-      loadSubmissions();
-    }, [submitUrl]);
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+  
+  function getSubmissionDetails(submission) {
+    const fullSubmission = safeJsonParse(submission.full_submission_json, null);
+  
+    const groups =
+      fullSubmission?.groups ||
+      safeJsonParse(submission.group_predictions_json, {});
+  
+    const thirdPlaceQualifyingGroups =
+      fullSubmission?.thirdPlaceQualifyingGroups ||
+      safeJsonParse(submission.third_place_json, []);
+  
+    const picks =
+      fullSubmission?.picks ||
+      safeJsonParse(submission.bracket_picks_json, {});
+  
+    const champion =
+      fullSubmission?.champion ||
+      submission.champion ||
+      picks.FINAL ||
+      "";
+  
+    const roundOf32 =
+      fullSubmission?.roundOf32 ||
+      [];
+  
+    return {
+      groups,
+      thirdPlaceQualifyingGroups,
+      picks,
+      champion,
+      roundOf32
+    };
+  }
+  
+  function LoadingDots({ label = "Loading" }) {
+    return (
+      <p className="loading-dots" aria-live="polite">
+        <span>{label}</span>
+        <span className="dot dot-1">.</span>
+        <span className="dot dot-2">.</span>
+        <span className="dot dot-3">.</span>
+      </p>
+    );
+  }
+
+  function ReadOnlyBracketMatch({ id, a, b, winner }) {
+    return (
+      <div className="readonly-match">
+        <div className="match-id">{id}</div>
+  
+        <div className={winner === a ? "readonly-team winner-team" : "readonly-team"}>
+          {a || "TBD"}
+        </div>
+  
+        <div className={winner === b ? "readonly-team winner-team" : "readonly-team"}>
+          {b || "TBD"}
+        </div>
+      </div>
+    );
+  }
+  
+  function PredictionBracket({ details }) {
+    const picks = details.picks || {};
+  
+    const roundOf32ById = Object.fromEntries(
+      (details.roundOf32 || []).map(match => [match.id, match])
+    );
+    
+    const roundOf32 = ROUND_OF_16_TEMPLATE
+      .flat()
+      .map(matchId => roundOf32ById[matchId])
+      .filter(Boolean);
+  
+    const roundOf16 = ROUND_OF_16_TEMPLATE.map(([left, right], index) => ({
+      id: `R16-${index + 1}`,
+      a: picks[left],
+      b: picks[right],
+      winner: picks[`R16-${index + 1}`]
+    }));
+  
+    const quarterFinals = [
+      { id: "QF-1", a: picks["R16-1"], b: picks["R16-2"], winner: picks["QF-1"] },
+      { id: "QF-2", a: picks["R16-3"], b: picks["R16-4"], winner: picks["QF-2"] },
+      { id: "QF-3", a: picks["R16-5"], b: picks["R16-6"], winner: picks["QF-3"] },
+      { id: "QF-4", a: picks["R16-7"], b: picks["R16-8"], winner: picks["QF-4"] }
+    ];
+  
+    const semiFinals = [
+      { id: "SF-1", a: picks["QF-1"], b: picks["QF-2"], winner: picks["SF-1"] },
+      { id: "SF-2", a: picks["QF-3"], b: picks["QF-4"], winner: picks["SF-2"] }
+    ];
+  
+    const final = [
+      { id: "FINAL", a: picks["SF-1"], b: picks["SF-2"], winner: picks.FINAL }
+    ];
+  
+    return (
+      <div className="readonly-bracket">
+        <div className="readonly-round">
+          <h4>Round of 32</h4>
+          {orderRoundOf32ForBracket(roundOf32).map(match => (
+            <ReadOnlyBracketMatch
+              key={match.id}
+              id={match.id}
+              a={match.a}
+              b={match.b}
+              winner={picks[match.id]}
+            />
+          ))}
+        </div>
+  
+        <div className="readonly-round">
+          <h4>Round of 16</h4>
+          {roundOf16.map(match => (
+            <ReadOnlyBracketMatch
+              key={match.id}
+              id={match.id}
+              a={match.a}
+              b={match.b}
+              winner={match.winner}
+            />
+          ))}
+        </div>
+  
+        <div className="readonly-round">
+          <h4>Quarterfinals</h4>
+          {quarterFinals.map(match => (
+            <ReadOnlyBracketMatch
+              key={match.id}
+              id={match.id}
+              a={match.a}
+              b={match.b}
+              winner={match.winner}
+            />
+          ))}
+        </div>
+  
+        <div className="readonly-round">
+          <h4>Semifinals</h4>
+          {semiFinals.map(match => (
+            <ReadOnlyBracketMatch
+              key={match.id}
+              id={match.id}
+              a={match.a}
+              b={match.b}
+              winner={match.winner}
+            />
+          ))}
+        </div>
+  
+        <div className="readonly-round">
+          <h4>Final</h4>
+          {final.map(match => (
+            <ReadOnlyBracketMatch
+              key={match.id}
+              id={match.id}
+              a={match.a}
+              b={match.b}
+              winner={match.winner}
+            />
+          ))}
+  
+          <div className="readonly-champion">
+            <span>Champion</span>
+            <strong>{details.champion || "TBD"}</strong>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function GuessDetail({ submission, onBack }) {
+    const details = getSubmissionDetails(submission);
   
     return (
       <section className="panel">
-        <div className="section-heading">
+        <button className="secondary back-button" type="button" onClick={onBack}>
+          ← Back to all guesses
+        </button>
+  
+        <div className="detail-hero">
           <div>
-            <h2>All Guesses</h2>
-            <p>
-              These are the submissions currently recorded in the Google Sheet.
+            <p className="eyebrow dark-eyebrow">Prediction detail</p>
+            <h2>{submission.name || "Unknown"}</h2>
+            <p className="muted">
+              Submitted: {formatTimestampForUser(submission.timestamp)}
             </p>
           </div>
   
-          <button className="secondary" type="button" onClick={loadSubmissions}>
-            Refresh
-          </button>
+          <div className="champion-card">
+            <span>Champion pick</span>
+            <strong>{details.champion || "Not selected"}</strong>
+          </div>
         </div>
   
-        {loading && <p className="muted">Loading guesses...</p>}
+        <div className="detail-grid">
+          <section className="detail-card">
+            <h3>Group predictions</h3>
   
-        {error && <p className="error">{error}</p>}
+            <div className="detail-groups-grid">
+              {Object.entries(details.groups).map(([group, ranking]) => (
+                <div className="mini-group-card" key={group}>
+                  <h4>Group {group}</h4>
   
-        {!loading && !error && submissions.length === 0 && (
-          <p className="muted">No submissions found yet.</p>
-        )}
+                  <ol>
+                    {(ranking || []).map(team => (
+                      <li key={team}>{team}</li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
+            </div>
+          </section>
   
-        {!loading && !error && submissions.length > 0 && (
-          <div className="guess-table-wrap">
-            <table className="guess-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Champion</th>
-                  <th>Submitted</th>
-                </tr>
-              </thead>
-              <tbody>
-                {submissions.map((submission, index) => (
-                  <tr key={`${submission.name}-${index}`}>
-                    <td>{submission.name || "Unknown"}</td>
-                    <td>{submission.champion || "Not selected"}</td>
-                    <td>{formatTimestampForUser(submission.timestamp)}</td>
-                  </tr>
+          <section className="detail-card">
+            <h3>Third-place qualifiers</h3>
+  
+            {details.thirdPlaceQualifyingGroups.length > 0 ? (
+              <div className="pill-row">
+                {details.thirdPlaceQualifyingGroups.map(group => (
+                  <span className="pill" key={group}>
+                    Group {group}: {details.groups[group]?.[2] || "Unknown"}
+                  </span>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              </div>
+            ) : (
+              <p className="muted">No third-place qualifiers recorded.</p>
+            )}
+          </section>
+  
+          <section className="detail-card">
+            <h3>Knockout bracket</h3>
+            <p className="muted">
+              Highlighted teams are the winners picked by this user.
+            </p>
+  
+            <PredictionBracket details={details} />
+          </section>
+        </div>
       </section>
     );
   }
+
+function AllGuesses({ submitUrl }) {
+  const [loading, setLoading] = useState(false);
+  const [submissions, setSubmissions] = useState([]);
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [error, setError] = useState("");
+
+  async function loadSubmissions() {
+    try {
+      setLoading(true);
+      setError("");
+
+      if (!submitUrl) {
+        throw new Error("No Google Sheets URL is configured.");
+      }
+
+      const data = await fetchJsonp(`${submitUrl}?type=submissions`);
+
+      if (!data.ok) {
+        throw new Error(data.error || "Could not read submissions.");
+      }
+
+      setSubmissions(data.submissions || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadSubmissions();
+  }, [submitUrl]);
+
+  if (selectedSubmission) {
+    return (
+      <GuessDetail
+        submission={selectedSubmission}
+        onBack={() => setSelectedSubmission(null)}
+      />
+    );
+  }
+
+  return (
+    <section className="panel">
+      <div className="section-heading">
+        <div>
+          <h2>All Guesses</h2>
+          <p>
+            These are the submissions currently recorded in the Google Sheet.
+            Click a row to view the full prediction.
+          </p>
+        </div>
+
+        <button className="secondary" type="button" onClick={loadSubmissions}>
+          Refresh
+        </button>
+      </div>
+
+      {loading && <LoadingDots label="Loading guesses" />}
+
+      {error && <p className="error">{error}</p>}
+
+      {!loading && !error && submissions.length === 0 && (
+        <p className="muted">No submissions found yet.</p>
+      )}
+
+      {!loading && !error && submissions.length > 0 && (
+        <div className="guess-table-wrap">
+          <table className="guess-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Champion</th>
+                <th>Submitted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {submissions.map((submission, index) => (
+                <tr
+                  key={`${submission.name}-${index}`}
+                  className="clickable-row"
+                  onClick={() => setSelectedSubmission(submission)}
+                >
+                  <td>{submission.name || "Unknown"}</td>
+                  <td>{submission.champion || "Not selected"}</td>
+                  <td>{formatTimestampForUser(submission.timestamp)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("submit");

@@ -402,6 +402,75 @@
     font-size: 13px;
   }
   
+  .tabs {
+    display: flex;
+    gap: 10px;
+    margin: 0 0 24px;
+    flex-wrap: wrap;
+  }
+  
+  .tab {
+    border: 1px solid #c9d3e4;
+    border-radius: 999px;
+    padding: 11px 16px;
+    background: white;
+    color: #172033;
+    font-weight: 900;
+    cursor: pointer;
+  }
+  
+  .active-tab {
+    background: #1d6eea;
+    color: white;
+    border-color: #1d6eea;
+  }
+  
+  .secondary {
+    border: 1px solid #c9d3e4;
+    border-radius: 14px;
+    padding: 11px 16px;
+    background: white;
+    color: #172033;
+    font-weight: 900;
+    cursor: pointer;
+  }
+  
+  .secondary:hover {
+    border-color: #1d6eea;
+  }
+  
+  .muted {
+    color: #5d6b82;
+  }
+  
+  .guess-table-wrap {
+    overflow-x: auto;
+  }
+  
+  .guess-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+  }
+  
+  .guess-table th,
+  .guess-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #e1e8f2;
+    text-align: left;
+  }
+  
+  .guess-table th {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #5d6b82;
+  }
+  
+  .guess-table td:first-child {
+    font-weight: 900;
+  }
+  
   @media (max-width: 760px) {
     .hero {
       padding: 28px;

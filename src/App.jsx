@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 const GROUPS = {
   A: ["Mexico", "South Korea", "South Africa", "Czechia"],
@@ -55,6 +55,29 @@ const ROUND_OF_16_TEMPLATE = [
   ["M86", "M88"],
   ["M85", "M87"]
 ];
+
+function fetchJsonp(url) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `jsonpCallback_${Date.now()}_${Math.round(Math.random() * 100000)}`;
+    const separator = url.includes("?") ? "&" : "?";
+    const script = document.createElement("script");
+
+    window[callbackName] = data => {
+      delete window[callbackName];
+      document.body.removeChild(script);
+      resolve(data);
+    };
+
+    script.onerror = () => {
+      delete window[callbackName];
+      document.body.removeChild(script);
+      reject(new Error("Could not load data from Google Sheets."));
+    };
+
+    script.src = `${url}${separator}callback=${callbackName}`;
+    document.body.appendChild(script);
+  });
+}
 
 function defaultRankings() {
   return Object.fromEntries(
@@ -236,7 +259,119 @@ function GroupRanker({ group, ranking, onChange }) {
     );
   }
 
+  function formatTimestampForUser(value) {
+    if (!value) return "";
+  
+    const date = new Date(value);
+  
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+  
+    const userTimeZone =
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: userTimeZone,
+      day: "numeric",
+      month: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZoneName: "short"
+    }).formatToParts(date);
+  
+    const get = type => parts.find(part => part.type === type)?.value;
+  
+    return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")}:${get("second")} ${get("timeZoneName")}`;
+  }
+
+  function AllGuesses({ submitUrl }) {
+    const [loading, setLoading] = useState(false);
+    const [submissions, setSubmissions] = useState([]);
+    const [error, setError] = useState("");
+  
+    async function loadSubmissions() {
+      try {
+        setLoading(true);
+        setError("");
+  
+        if (!submitUrl) {
+          throw new Error("No Google Sheets URL is configured.");
+        }
+  
+        const data = await fetchJsonp(`${submitUrl}?type=submissions`);
+  
+        if (!data.ok) {
+          throw new Error(data.error || "Could not read submissions.");
+        }
+  
+        setSubmissions(data.submissions || []);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+  
+    useEffect(() => {
+      loadSubmissions();
+    }, [submitUrl]);
+  
+    return (
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <h2>All Guesses</h2>
+            <p>
+              These are the submissions currently recorded in the Google Sheet.
+            </p>
+          </div>
+  
+          <button className="secondary" type="button" onClick={loadSubmissions}>
+            Refresh
+          </button>
+        </div>
+  
+        {loading && <p className="muted">Loading guesses...</p>}
+  
+        {error && <p className="error">{error}</p>}
+  
+        {!loading && !error && submissions.length === 0 && (
+          <p className="muted">No submissions found yet.</p>
+        )}
+  
+        {!loading && !error && submissions.length > 0 && (
+          <div className="guess-table-wrap">
+            <table className="guess-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Champion</th>
+                  <th>Submitted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {submissions.map((submission, index) => (
+                  <tr key={`${submission.name}-${index}`}>
+                    <td>{submission.name || "Unknown"}</td>
+                    <td>{submission.champion || "Not selected"}</td>
+                    <td>{formatTimestampForUser(submission.timestamp)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    );
+  }
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState("submit");
+  const submitUrl = import.meta.env.VITE_SUBMIT_URL;
   const [name, setName] = useState("");
   const [rankings, setRankings] = useState(defaultRankings);
   const [selectedThirdGroups, setSelectedThirdGroups] = useState([]);
@@ -334,8 +469,6 @@ export default function App() {
         champion
       };
 
-      const submitUrl = import.meta.env.VITE_SUBMIT_URL;
-
       if (!submitUrl) {
         console.log("Submission preview:", submission);
         setStatus(
@@ -369,6 +502,31 @@ export default function App() {
           generate the bracket, and pick your champion.
         </p>
       </header>
+
+      <nav className="tabs">
+        <button
+          type="button"
+          className={activeTab === "submit" ? "tab active-tab" : "tab"}
+          onClick={() => setActiveTab("submit")}
+        >
+          Submit Guess
+        </button>
+
+        <button
+          type="button"
+          className={activeTab === "guesses" ? "tab active-tab" : "tab"}
+          onClick={() => setActiveTab("guesses")}
+        >
+          All Guesses
+        </button>
+      </nav>
+
+      {activeTab === "guesses" && (
+        <AllGuesses submitUrl={submitUrl} />
+      )}
+
+      {activeTab === "submit" && (
+        <>
 
       <section className="panel">
         <label className="name-label">
@@ -530,6 +688,8 @@ export default function App() {
       )}
 
       {status && <p className="status">{status}</p>}
+      </>
+    )}
     </main>
   );
 }

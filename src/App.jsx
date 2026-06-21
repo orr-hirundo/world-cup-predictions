@@ -628,6 +628,267 @@ function GroupRanker({ group, ranking, onChange }) {
     );
   }
 
+  const ROUND_POINTS = {
+    R32: 1,
+    R16: 2,
+    QF: 4,
+    SF: 8,
+    FINAL: 16,
+    CHAMPION: 32
+  };
+  
+  const SCORE_ROUNDS = ["R32", "R16", "QF", "SF", "FINAL", "CHAMPION"];
+  
+  function normalizeTeamName(team) {
+    return String(team || "").trim();
+  }
+  
+  function uniqueTeams(teams) {
+    return [...new Set((teams || []).map(normalizeTeamName).filter(Boolean))];
+  }
+  
+  function getPredictedTeamsByRound(details) {
+    const groups = details.groups || {};
+    const thirdGroups = details.thirdPlaceQualifyingGroups || [];
+    const picks = details.picks || {};
+  
+    const r32 = [];
+  
+    Object.entries(groups).forEach(([, ranking]) => {
+      if (ranking?.[0]) r32.push(ranking[0]);
+      if (ranking?.[1]) r32.push(ranking[1]);
+    });
+  
+    thirdGroups.forEach(group => {
+      const thirdPlaceTeam = groups[group]?.[2];
+      if (thirdPlaceTeam) r32.push(thirdPlaceTeam);
+    });
+  
+    return {
+      R32: uniqueTeams(r32),
+  
+      R16: uniqueTeams(
+        Object.keys(picks)
+          .filter(key => /^M\d+$/.test(key))
+          .map(key => picks[key])
+      ),
+  
+      QF: uniqueTeams(
+        Object.keys(picks)
+          .filter(key => key.startsWith("R16-"))
+          .map(key => picks[key])
+      ),
+  
+      SF: uniqueTeams(
+        Object.keys(picks)
+          .filter(key => key.startsWith("QF-"))
+          .map(key => picks[key])
+      ),
+  
+      FINAL: uniqueTeams(
+        Object.keys(picks)
+          .filter(key => key.startsWith("SF-"))
+          .map(key => picks[key])
+      ),
+  
+      CHAMPION: picks.FINAL ? [normalizeTeamName(picks.FINAL)] : []
+    };
+  }
+  
+  function scoreRound(predictedTeams, actualTeams, pointsPerTeam) {
+    const actualSet = new Set(uniqueTeams(actualTeams));
+  
+    const correctTeams = uniqueTeams(predictedTeams).filter(team =>
+      actualSet.has(team)
+    );
+  
+    return {
+      correctTeams,
+      count: correctTeams.length,
+      points: correctTeams.length * pointsPerTeam
+    };
+  }
+  
+  function scoreSubmission(submission, actualResults) {
+    const details = getSubmissionDetails(submission);
+    const predictedByRound = getPredictedTeamsByRound(details);
+  
+    const roundScores = {};
+  
+    SCORE_ROUNDS.forEach(round => {
+      roundScores[round] = scoreRound(
+        predictedByRound[round],
+        actualResults[round] || [],
+        ROUND_POINTS[round]
+      );
+    });
+  
+    const total = SCORE_ROUNDS.reduce(
+      (sum, round) => sum + roundScores[round].points,
+      0
+    );
+  
+    return {
+      submission,
+      details,
+      predictedByRound,
+      roundScores,
+      total
+    };
+  }
+  
+  function getSubmissionsFromResponse(data) {
+    return data.submissions || data.records || [];
+  }
+
+  function Leaderboard({ submitUrl }) {
+    const [loading, setLoading] = useState(false);
+    const [leaderboardRows, setLeaderboardRows] = useState([]);
+    const [actualResults, setActualResults] = useState(null);
+    const [error, setError] = useState("");
+  
+    async function loadLeaderboard() {
+      try {
+        setLoading(true);
+        setError("");
+  
+        if (!submitUrl) {
+          throw new Error("No Google Sheets URL is configured.");
+        }
+  
+        const [submissionsData, actualResultsData] = await Promise.all([
+          fetchJsonp(`${submitUrl}?type=submissions`),
+          fetchJsonp(`${submitUrl}?type=actualResults`)
+        ]);
+  
+        if (!submissionsData.ok) {
+          throw new Error(submissionsData.error || "Could not read submissions.");
+        }
+  
+        if (!actualResultsData.ok) {
+          throw new Error(actualResultsData.error || "Could not read actual results.");
+        }
+  
+        const submissions = getSubmissionsFromResponse(submissionsData);
+        const results = actualResultsData.actualResults || {};
+  
+        const scoredRows = submissions
+          .map(submission => scoreSubmission(submission, results))
+          .sort((a, b) => {
+            if (b.total !== a.total) return b.total - a.total;
+  
+            // Tiebreakers: champion, finalists, semis, quarters, R16, R32
+            const tiebreakRounds = ["CHAMPION", "FINAL", "SF", "QF", "R16", "R32"];
+  
+            for (const round of tiebreakRounds) {
+              const diff =
+                b.roundScores[round].points - a.roundScores[round].points;
+  
+              if (diff !== 0) return diff;
+            }
+  
+            return String(a.submission.name || "").localeCompare(
+              String(b.submission.name || "")
+            );
+          });
+  
+        setActualResults(results);
+        setLeaderboardRows(scoredRows);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+  
+    useEffect(() => {
+      loadLeaderboard();
+    }, [submitUrl]);
+  
+    return (
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <h2>Leaderboard</h2>
+            <p>
+              Scores are calculated from the current ActualResults sheet. Refresh
+              after updating the sheet to pull the latest scores.
+            </p>
+          </div>
+  
+          <button className="secondary" type="button" onClick={loadLeaderboard}>
+            Refresh
+          </button>
+        </div>
+  
+        {loading && <LoadingDots label="Loading leaderboard" />}
+  
+        {error && <p className="error">{error}</p>}
+  
+        {!loading && !error && actualResults && (
+          <div className="results-summary">
+            {SCORE_ROUNDS.map(round => (
+              <div className="result-summary-card" key={round}>
+                <span>{round}</span>
+                <strong>{uniqueTeams(actualResults[round]).length}</strong>
+                <small>
+                  {round === "CHAMPION" ? "team entered" : "teams entered"}
+                </small>
+              </div>
+            ))}
+          </div>
+        )}
+  
+        {!loading && !error && leaderboardRows.length === 0 && (
+          <p className="muted">No submissions found yet.</p>
+        )}
+  
+        {!loading && !error && leaderboardRows.length > 0 && (
+          <div className="guess-table-wrap">
+            <table className="guess-table leaderboard-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Name</th>
+                  <th>Total</th>
+                  <th>R32</th>
+                  <th>R16</th>
+                  <th>QF</th>
+                  <th>SF</th>
+                  <th>Final</th>
+                  <th>Champion</th>
+                </tr>
+              </thead>
+  
+              <tbody>
+                {leaderboardRows.map((row, index) => (
+                  <tr key={`${row.submission.name}-${index}`}>
+                    <td className="rank-cell">{index + 1}</td>
+                    <td>{row.submission.name || "Unknown"}</td>
+                    <td className="total-cell">{row.total}</td>
+                    <td>{row.roundScores.R32.points}</td>
+                    <td>{row.roundScores.R16.points}</td>
+                    <td>{row.roundScores.QF.points}</td>
+                    <td>{row.roundScores.SF.points}</td>
+                    <td>{row.roundScores.FINAL.points}</td>
+                    <td>{row.roundScores.CHAMPION.points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+  
+        {!loading && !error && leaderboardRows.length > 0 && (
+          <p className="muted small leaderboard-note">
+            Scoring: R32 = 1 point, R16 = 2, QF = 4, SF = 8, Final = 16,
+            Champion = 32.
+          </p>
+        )}
+      </section>
+    );
+  }
+
 function AllGuesses({ submitUrl }) {
   const [loading, setLoading] = useState(false);
   const [submissions, setSubmissions] = useState([]);
@@ -649,7 +910,7 @@ function AllGuesses({ submitUrl }) {
         throw new Error(data.error || "Could not read submissions.");
       }
 
-      setSubmissions(data.submissions || []);
+      setSubmissions(getSubmissionsFromResponse(data));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -876,10 +1137,23 @@ export default function App() {
         >
           All Guesses
         </button>
+
+        <button
+          type="button"
+          className={activeTab === "leaderboard" ? "tab active-tab" : "tab"}
+          onClick={() => setActiveTab("leaderboard")}
+        >
+          Leaderboard
+        </button>
+
       </nav>
 
       {activeTab === "guesses" && (
         <AllGuesses submitUrl={submitUrl} />
+      )}
+      
+      {activeTab === "leaderboard" && (
+        <Leaderboard submitUrl={submitUrl} />
       )}
 
       {activeTab === "submit" && (

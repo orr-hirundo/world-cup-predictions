@@ -172,51 +172,63 @@ function getQualifiers(rankings) {
   return qualifiers;
 }
 
-function assignThirdPlaceSlots(rankings, selectedThirdGroups) {
+function assignThirdPlaceSlots(rankings, selectedThirdGroups, annexC) {
   const selected = [...selectedThirdGroups];
 
   if (selected.length !== 8) {
     throw new Error("Please choose exactly 8 third-place teams.");
   }
 
-  const result = {};
-  const usedGroups = new Set();
+  const annexLookup = buildAnnexCLookup(annexC);
+  const comboKey = comboKeyFromGroups(selected);
+  const annexRow = annexLookup[comboKey];
 
-  function backtrack(slotIndex) {
-    if (slotIndex === THIRD_PLACE_SLOTS.length) return true;
-
-    const slot = THIRD_PLACE_SLOTS[slotIndex];
-    const candidates = selected.filter(
-      group => slot.allowedGroups.includes(group) && !usedGroups.has(group)
+  if (!annexRow) {
+    throw new Error(
+      `Could not find FIFA Annex C scenario for third-place groups: ${comboKey}.`
     );
+  }
 
-    for (const group of candidates) {
-      usedGroups.add(group);
-      result[slot.key] = rankings[group][2];
+  const winnerColumnToSlotKey = {
+    "1E": "3_ABCDF",
+    "1I": "3_CDFGH",
+    "1A": "3_CEFHI",
+    "1L": "3_EHIJK",
+    "1D": "3_BEFIJ",
+    "1G": "3_AEHIJ",
+    "1B": "3_EFGIJ",
+    "1K": "3_DEIJL"
+  };
 
-      if (backtrack(slotIndex + 1)) return true;
+  const result = {};
 
-      delete result[slot.key];
-      usedGroups.delete(group);
+  Object.entries(winnerColumnToSlotKey).forEach(([winnerColumn, slotKey]) => {
+    const thirdGroupCode = String(annexRow[winnerColumn] || "")
+      .trim()
+      .replace(/^3/, "");
+
+    const thirdPlaceTeam = rankings[thirdGroupCode]?.[2];
+
+    if (!thirdGroupCode || !thirdPlaceTeam) {
+      throw new Error(
+        `FIFA Annex C scenario is missing a valid team for ${winnerColumn}.`
+      );
     }
 
-    return false;
-  }
-
-  const ok = backtrack(0);
-
-  if (!ok) {
-    throw new Error(
-      "Those 8 third-place teams cannot be assigned to the current bracket slots. Try a different set."
-    );
-  }
+    result[slotKey] = thirdPlaceTeam;
+  });
 
   return result;
 }
 
-function buildRoundOf32(rankings, selectedThirdGroups) {
+function buildRoundOf32(rankings, selectedThirdGroups, annexC) {
   const directQualifiers = getQualifiers(rankings);
-  const thirdSlotAssignments = assignThirdPlaceSlots(rankings, selectedThirdGroups);
+  const thirdSlotAssignments = assignThirdPlaceSlots(
+    rankings,
+    selectedThirdGroups,
+    annexC
+  );
+
   const slotToTeam = { ...directQualifiers, ...thirdSlotAssignments };
 
   return ROUND_OF_32_TEMPLATE.map(match => ({
@@ -741,8 +753,136 @@ function GroupRanker({ group, ranking, onChange }) {
     return data.submissions || data.records || [];
   }
 
+  function ActualBracketTeam({ team, winner }) {
+    const isWinner = team && winner && normalizeTeamName(team) === normalizeTeamName(winner);
+  
+    return (
+      <div className={isWinner ? "actual-bracket-team actual-bracket-winner" : "actual-bracket-team"}>
+        {team ? <TeamName team={team} /> : <span className="muted">TBD</span>}
+      </div>
+    );
+  }
+  
+  function comboKeyFromGroups(groups) {
+    return [...new Set((groups || []).map(group => String(group).trim()))]
+      .filter(Boolean)
+      .sort()
+      .join("");
+  }
+  
+  function normalizeAnnexThirdGroups(value) {
+    return String(value || "")
+      .replace(/[^A-L]/g, "")
+      .split("")
+      .sort()
+      .join("");
+  }
+  
+  function buildAnnexCLookup(annexRows) {
+    const lookup = {};
+  
+    (annexRows || []).forEach(row => {
+      const key = normalizeAnnexThirdGroups(row.ThirdGroups);
+  
+      if (key) {
+        lookup[key] = row;
+      }
+    });
+  
+    return lookup;
+  }
+  
+  function ActualBracketMatch({ match }) {
+    const fallbackMatch = {
+      matchId: "",
+      teamA: "",
+      teamB: "",
+      winner: ""
+    };
+  
+    const data = match || fallbackMatch;
+  
+    return (
+      <div className="actual-bracket-match">
+        <div className="actual-bracket-match-id">{data.matchId}</div>
+        <ActualBracketTeam team={data.teamA} winner={data.winner} />
+        <ActualBracketTeam team={data.teamB} winner={data.winner} />
+      </div>
+    );
+  }
+  
+  function ActualBracketDisplay({ actualBracketRows }) {
+    const byMatchId = normalizeActualBracketRows(actualBracketRows);
+  
+    return (
+      <section className="actual-bracket-section">
+        <div className="section-heading compact-heading">
+          <div>
+            <h3>Current tournament bracket</h3>
+            <p>
+              Filled from the ActualBracket sheet. Winners will be highlighted once entered.
+            </p>
+          </div>
+        </div>
+  
+        <div className="actual-bracket-scroll">
+          <div className="actual-bracket-fifa compact-center-bracket">
+            {ACTUAL_BRACKET_SIDE_ROUNDS.map(round => {
+              if (round.key === "CENTER") {
+                return (
+                  <div className="actual-bracket-center-column" key={round.key}>
+                    <h4>Final</h4>
+  
+                    <div className="center-stack">
+                      <div className="center-semi-block">
+                        <h5>Semi-final</h5>
+                        <ActualBracketMatch
+                          match={byMatchId.M101 || { matchId: "M101" }}
+                        />
+                      </div>
+  
+                      <div className="center-final-block">
+                        <h5>Final</h5>
+                        <ActualBracketMatch
+                          match={byMatchId.M104 || { matchId: "M104" }}
+                        />
+                      </div>
+  
+                      <div className="center-semi-block">
+                        <h5>Semi-final</h5>
+                        <ActualBracketMatch
+                          match={byMatchId.M102 || { matchId: "M102" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+  
+              return (
+                <div className={`actual-bracket-column ${round.key}`} key={round.key}>
+                  <h4>{round.title}</h4>
+  
+                  <div className="actual-bracket-column-body">
+                    {round.matchIds.map(matchId => (
+                      <ActualBracketMatch
+                        key={matchId}
+                        match={byMatchId[matchId] || { matchId }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   function Leaderboard({ submitUrl }) {
     const [loading, setLoading] = useState(false);
+    const [actualBracketRows, setActualBracketRows] = useState([]);
     const [leaderboardRows, setLeaderboardRows] = useState([]);
     const [actualResults, setActualResults] = useState(null);
     const [error, setError] = useState("");
@@ -756,9 +896,10 @@ function GroupRanker({ group, ranking, onChange }) {
           throw new Error("No Google Sheets URL is configured.");
         }
   
-        const [submissionsData, actualResultsData] = await Promise.all([
+        const [submissionsData, actualResultsData, actualBracketData] = await Promise.all([
           fetchJsonp(`${submitUrl}?type=submissions`),
-          fetchJsonp(`${submitUrl}?type=actualResults`)
+          fetchJsonp(`${submitUrl}?type=actualResults`),
+          fetchJsonp(`${submitUrl}?type=actualBracket`)
         ]);
   
         if (!submissionsData.ok) {
@@ -767,6 +908,10 @@ function GroupRanker({ group, ranking, onChange }) {
   
         if (!actualResultsData.ok) {
           throw new Error(actualResultsData.error || "Could not read actual results.");
+        }
+
+        if (!actualBracketData.ok) {
+          throw new Error(actualBracketData.error || "Could not read actual bracket.");
         }
   
         const submissions = getSubmissionsFromResponse(submissionsData);
@@ -793,6 +938,7 @@ function GroupRanker({ group, ranking, onChange }) {
           });
   
         setActualResults(results);
+        setActualBracketRows(actualBracketData.actualBracket || []);
         setLeaderboardRows(scoredRows);
       } catch (err) {
         setError(err.message);
@@ -885,8 +1031,70 @@ function GroupRanker({ group, ranking, onChange }) {
             Champion = 32.
           </p>
         )}
+
+        {!loading && !error && actualResults && (
+          <ActualBracketDisplay actualBracketRows={actualBracketRows} />
+        )}
       </section>
     );
+  }
+
+  const ACTUAL_BRACKET_SIDE_ROUNDS = [
+    {
+      key: "R32_LEFT",
+      title: "Round of 32",
+      matchIds: ["M74", "M77", "M73", "M75", "M83", "M84", "M81", "M82"]
+    },
+    {
+      key: "R16_LEFT",
+      title: "Round of 16",
+      matchIds: ["M89", "M90", "M93", "M94"]
+    },
+    {
+      key: "QF_LEFT",
+      title: "Quarter-final",
+      matchIds: ["M97", "M98"]
+    },
+    {
+      key: "CENTER",
+      title: "Final",
+      matchIds: ["M101", "M104", "M102"]
+    },
+    {
+      key: "QF_RIGHT",
+      title: "Quarter-final",
+      matchIds: ["M99", "M100"]
+    },
+    {
+      key: "R16_RIGHT",
+      title: "Round of 16",
+      matchIds: ["M91", "M92", "M95", "M96"]
+    },
+    {
+      key: "R32_RIGHT",
+      title: "Round of 32",
+      matchIds: ["M76", "M78", "M79", "M80", "M86", "M88", "M85", "M87"]
+    }
+  ];
+  
+  function normalizeActualBracketRows(rows = []) {
+    const byMatchId = {};
+  
+    rows.forEach(row => {
+      const matchId = String(row.match_id || "").trim();
+  
+      if (!matchId) return;
+  
+      byMatchId[matchId] = {
+        round: String(row.round || "").trim(),
+        matchId,
+        teamA: String(row.team_a || "").trim(),
+        teamB: String(row.team_b || "").trim(),
+        winner: String(row.winner || "").trim()
+      };
+    });
+  
+    return byMatchId;
   }
 
 function AllGuesses({ submitUrl }) {
@@ -990,6 +1198,8 @@ function AllGuesses({ submitUrl }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState("submit");
   const submitUrl = import.meta.env.VITE_SUBMIT_URL;
+  const [annexC, setAnnexC] = useState([]);
+  const [annexCStatus, setAnnexCStatus] = useState("");
   const [name, setName] = useState("");
   const [rankings, setRankings] = useState(defaultRankings);
   const [selectedThirdGroups, setSelectedThirdGroups] = useState([]);
@@ -1005,6 +1215,31 @@ export default function App() {
       team: ranking[2]
     }));
   }, [rankings]);
+
+  useEffect(() => {
+    async function loadAnnexC() {
+      try {
+        if (!submitUrl) {
+          setAnnexCStatus("No Google Sheets URL configured. FIFA bracket table not loaded.");
+          return;
+        }
+  
+        const data = await fetchJsonp(`${submitUrl}?type=fifaAnnexC`);
+  
+        if (!data.ok) {
+          throw new Error(data.error || "Could not load FIFA Annex C table.");
+        }
+  
+        setAnnexC(data.annexC || []);
+        setAnnexCStatus("");
+      } catch (error) {
+        setAnnexC([]);
+        setAnnexCStatus(error.message);
+      }
+    }
+  
+    loadAnnexC();
+  }, [submitUrl]);
 
   function updateRanking(group, nextRanking) {
     setRankings(prev => ({ ...prev, [group]: nextRanking }));
@@ -1033,7 +1268,14 @@ export default function App() {
         throw new Error("Please fix duplicate teams in the group rankings.");
       }
 
-      const bracket = buildRoundOf32(rankings, selectedThirdGroups);
+      if (!annexC.length) {
+        throw new Error(
+          annexCStatus ||
+            "FIFA Annex C table is still loading. Please wait a moment and try again."
+        );
+      }
+      
+      const bracket = buildRoundOf32(rankings, selectedThirdGroups, annexC);
       setRoundOf32(bracket);
       setPicks({});
       setStatus("Bracket generated. Pick winners from left to right.");

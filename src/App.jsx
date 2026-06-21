@@ -749,6 +749,29 @@ function GroupRanker({ group, ranking, onChange }) {
     };
   }
   
+  function getSubmissionBasics(submission) {
+    const fullSubmission = safeJsonParse(submission.full_submission_json, null);
+  
+    const groups =
+      fullSubmission?.groups ||
+      safeJsonParse(submission.group_predictions_json, {});
+  
+    const thirdPlaceQualifyingGroups =
+      fullSubmission?.thirdPlaceQualifyingGroups ||
+      safeJsonParse(submission.third_place_json, []);
+  
+    const name =
+      fullSubmission?.name ||
+      submission.name ||
+      "";
+  
+    return {
+      name,
+      groups,
+      thirdPlaceQualifyingGroups
+    };
+  }
+
   function getSubmissionsFromResponse(data) {
     return data.submissions || data.records || [];
   }
@@ -791,7 +814,7 @@ function GroupRanker({ group, ranking, onChange }) {
   
     return lookup;
   }
-  
+
   function ActualBracketMatch({ match }) {
     const fallbackMatch = {
       matchId: "",
@@ -820,7 +843,7 @@ function GroupRanker({ group, ranking, onChange }) {
           <div>
             <h3>Current tournament bracket</h3>
             <p>
-              Filled from the ActualBracket sheet. Winners will be highlighted once entered.
+              Will be updated as teams advance and matches are played.
             </p>
           </div>
         </div>
@@ -957,8 +980,7 @@ function GroupRanker({ group, ranking, onChange }) {
           <div>
             <h2>Leaderboard</h2>
             <p>
-              Scores are calculated from the current ActualResults sheet. Refresh
-              after updating the sheet to pull the latest scores.
+              Scores calculated as results come in. See live-ish bracket below.
             </p>
           </div>
   
@@ -1027,7 +1049,7 @@ function GroupRanker({ group, ranking, onChange }) {
   
         {!loading && !error && leaderboardRows.length > 0 && (
           <p className="muted small leaderboard-note">
-            Scoring: R32 = 1 point, R16 = 2, QF = 4, SF = 8, Final = 16,
+            Scoring: Each team in the round-of-32 = 1 point, round-of-16 = 2, quarter-final = 4, semi-final = 8, final = 16,
             Champion = 32.
           </p>
         )}
@@ -1145,7 +1167,7 @@ function AllGuesses({ submitUrl }) {
         <div>
           <h2>All Guesses</h2>
           <p>
-            These are the submissions currently recorded in the Google Sheet.
+            These are the submissions currently recorded.
             Click a row to view the full prediction.
           </p>
         </div>
@@ -1206,6 +1228,9 @@ export default function App() {
   const [roundOf32, setRoundOf32] = useState([]);
   const [picks, setPicks] = useState({});
   const [status, setStatus] = useState("");
+  const [previousSubmissions, setPreviousSubmissions] = useState([]);
+  const [loadingPreviousSubmissions, setLoadingPreviousSubmissions] = useState(false);
+  const [previousSubmissionStatus, setPreviousSubmissionStatus] = useState("");
 
   const allRankingsValid = Object.values(rankings).every(rankingIsValid);
 
@@ -1240,6 +1265,68 @@ export default function App() {
   
     loadAnnexC();
   }, [submitUrl]);
+
+  async function loadPreviousSubmissions() {
+    try {
+      setLoadingPreviousSubmissions(true);
+      setPreviousSubmissionStatus("");
+  
+      if (!submitUrl) {
+        throw new Error("No Google Sheets URL is configured.");
+      }
+  
+      const data = await fetchJsonp(`${submitUrl}?type=submissions`);
+  
+      if (!data.ok) {
+        throw new Error(data.error || "Could not read previous submissions.");
+      }
+  
+      const submissions = getSubmissionsFromResponse(data);
+      setPreviousSubmissions(submissions);
+  
+      if (submissions.length === 0) {
+        setPreviousSubmissionStatus("No previous submissions found.");
+      }
+    } catch (error) {
+      setPreviousSubmissionStatus(error.message);
+    } finally {
+      setLoadingPreviousSubmissions(false);
+    }
+  }
+  
+  function loadPreviousSubmission(indexValue) {
+    if (indexValue === "") return;
+  
+    const submission = previousSubmissions[Number(indexValue)];
+  
+    if (!submission) {
+      setPreviousSubmissionStatus("Could not find that previous submission.");
+      return;
+    }
+  
+    const basics = getSubmissionBasics(submission);
+  
+    if (!basics.groups || Object.keys(basics.groups).length === 0) {
+      setPreviousSubmissionStatus("That submission does not contain group predictions.");
+      return;
+    }
+  
+    setName(basics.name);
+    setRankings(basics.groups);
+    setSelectedThirdGroups(basics.thirdPlaceQualifyingGroups || []);
+    setRoundOf32([]);
+    setPicks({});
+    setStatus("");
+    setPreviousSubmissionStatus(
+      `Loaded ${basics.name || "previous submission"}. Click Generate bracket to rebuild it with the official FIFA mapping.`
+    );
+  }
+
+  useEffect(() => {
+    if (activeTab === "submit" && previousSubmissions.length === 0) {
+      loadPreviousSubmissions();
+    }
+  }, [activeTab]);
 
   function updateRanking(group, nextRanking) {
     setRankings(prev => ({ ...prev, [group]: nextRanking }));
@@ -1402,14 +1489,56 @@ export default function App() {
         <>
 
       <section className="panel">
-        <label className="name-label">
-          Your name
-          <input
-            value={name}
-            onChange={event => setName(event.target.value)}
-            placeholder="Your Name"
-          />
-        </label>
+        <div className="submit-tools">
+          <label className="name-label">
+            Your name
+            <input
+              value={name}
+              onChange={event => setName(event.target.value)}
+              placeholder="Example: Orr"
+            />
+          </label>
+
+          <div className="previous-loader">
+            <div>
+              <strong>Load previous group picks</strong>
+              <p>
+                Restore a previous submission’s group rankings and third-place qualifiers,
+                then regenerate the bracket with the official FIFA mapping.
+              </p>
+            </div>
+
+            <div className="previous-loader-controls">
+              <button
+                className="secondary"
+                type="button"
+                onClick={loadPreviousSubmissions}
+                disabled={loadingPreviousSubmissions}
+              >
+                {loadingPreviousSubmissions ? "Loading..." : "Refresh submissions"}
+              </button>
+
+              <select
+                defaultValue=""
+                onChange={event => loadPreviousSubmission(event.target.value)}
+                disabled={previousSubmissions.length === 0}
+              >
+                <option value="">Choose previous submission...</option>
+                {previousSubmissions.map((submission, index) => (
+                  <option key={`${submission.name}-${index}`} value={index}>
+                    {(submission.name || "Unknown") +
+                      " — " +
+                      formatTimestampForUser(submission.timestamp)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {previousSubmissionStatus && (
+          <p className="status-inline">{previousSubmissionStatus}</p>
+        )}
       </section>
 
       <section>

@@ -134,6 +134,24 @@ const ACTUAL_BRACKET_SIDE_ROUNDS = [
   }
 ];
 
+const PREDICTION_ROUND_TO_FIFA_MATCH_ID = {
+  "R16-1": "M89",
+  "R16-2": "M90",
+  "R16-3": "M93",
+  "R16-4": "M94",
+  "R16-5": "M91",
+  "R16-6": "M92",
+  "R16-7": "M95",
+  "R16-8": "M96",
+  "QF-1": "M97",
+  "QF-2": "M98",
+  "QF-3": "M99",
+  "QF-4": "M100",
+  "SF-1": "M101",
+  "SF-2": "M102",
+  FINAL: "M104"
+};
+
 const ROUND_POINTS = {
   R32: 1,
   R16: 2,
@@ -395,17 +413,6 @@ function rankingIsValid(ranking) {
   return new Set(ranking).size === ranking.length;
 }
 
-function orderRoundOf32ForBracket(matches) {
-  const matchesById = Object.fromEntries(
-    (matches || []).map(match => [match.id, match])
-  );
-
-  return ROUND_OF_16_TEMPLATE
-    .flat()
-    .map(matchId => matchesById[matchId])
-    .filter(Boolean);
-}
-
 function normalizeActualBracketRows(rows = []) {
   const byMatchId = {};
 
@@ -424,6 +431,65 @@ function normalizeActualBracketRows(rows = []) {
   });
 
   return byMatchId;
+}
+
+function buildPredictedBracketRows(details) {
+  const picks = details.picks || {};
+  const rows = [];
+
+  (details.roundOf32 || []).forEach(match => {
+    rows.push({
+      match_id: match.id,
+      team_a: match.a || "",
+      team_b: match.b || "",
+      winner: picks[match.id] || ""
+    });
+  });
+
+  ROUND_OF_16_TEMPLATE.forEach(([left, right], index) => {
+    const pickId = `R16-${index + 1}`;
+    rows.push({
+      match_id: PREDICTION_ROUND_TO_FIFA_MATCH_ID[pickId],
+      team_a: picks[left] || "",
+      team_b: picks[right] || "",
+      winner: picks[pickId] || ""
+    });
+  });
+
+  [
+    { pickId: "QF-1", a: "R16-1", b: "R16-2" },
+    { pickId: "QF-2", a: "R16-3", b: "R16-4" },
+    { pickId: "QF-3", a: "R16-5", b: "R16-6" },
+    { pickId: "QF-4", a: "R16-7", b: "R16-8" }
+  ].forEach(({ pickId, a, b }) => {
+    rows.push({
+      match_id: PREDICTION_ROUND_TO_FIFA_MATCH_ID[pickId],
+      team_a: picks[a] || "",
+      team_b: picks[b] || "",
+      winner: picks[pickId] || ""
+    });
+  });
+
+  [
+    { pickId: "SF-1", a: "QF-1", b: "QF-2" },
+    { pickId: "SF-2", a: "QF-3", b: "QF-4" }
+  ].forEach(({ pickId, a, b }) => {
+    rows.push({
+      match_id: PREDICTION_ROUND_TO_FIFA_MATCH_ID[pickId],
+      team_a: picks[a] || "",
+      team_b: picks[b] || "",
+      winner: picks[pickId] || ""
+    });
+  });
+
+  rows.push({
+    match_id: PREDICTION_ROUND_TO_FIFA_MATCH_ID.FINAL,
+    team_a: picks["SF-1"] || "",
+    team_b: picks["SF-2"] || "",
+    winner: picks.FINAL || ""
+  });
+
+  return rows;
 }
 
 // --- Scoring ---
@@ -578,22 +644,6 @@ function Match({ id, a, b, winner, onPick }) {
   );
 }
 
-function ReadOnlyBracketMatch({ id, a, b, winner }) {
-  return (
-    <div className="readonly-match">
-      <div className="match-id">{id}</div>
-
-      <div className={winner === a ? "readonly-team winner-team" : "readonly-team"}>
-        <TeamName team={a} />
-      </div>
-
-      <div className={winner === b ? "readonly-team winner-team" : "readonly-team"}>
-        <TeamName team={b} />
-      </div>
-    </div>
-  );
-}
-
 function ActualBracketTeam({ team, winner }) {
   const isWinner = team && winner && normalizeTeamName(team) === normalizeTeamName(winner);
 
@@ -701,125 +751,13 @@ function GroupRanker({ group, ranking, onChange }) {
   );
   }
 
-function PredictionBracket({ details }) {
-  const picks = details.picks || {};
-
-  const roundOf32ById = Object.fromEntries(
-    (details.roundOf32 || []).map(match => [match.id, match])
-  );
-  
-  const roundOf32 = ROUND_OF_16_TEMPLATE
-    .flat()
-    .map(matchId => roundOf32ById[matchId])
-    .filter(Boolean);
-
-  const roundOf16 = ROUND_OF_16_TEMPLATE.map(([left, right], index) => ({
-    id: `R16-${index + 1}`,
-    a: picks[left],
-    b: picks[right],
-    winner: picks[`R16-${index + 1}`]
-  }));
-
-  const quarterFinals = [
-    { id: "QF-1", a: picks["R16-1"], b: picks["R16-2"], winner: picks["QF-1"] },
-    { id: "QF-2", a: picks["R16-3"], b: picks["R16-4"], winner: picks["QF-2"] },
-    { id: "QF-3", a: picks["R16-5"], b: picks["R16-6"], winner: picks["QF-3"] },
-    { id: "QF-4", a: picks["R16-7"], b: picks["R16-8"], winner: picks["QF-4"] }
-  ];
-
-  const semiFinals = [
-    { id: "SF-1", a: picks["QF-1"], b: picks["QF-2"], winner: picks["SF-1"] },
-    { id: "SF-2", a: picks["QF-3"], b: picks["QF-4"], winner: picks["SF-2"] }
-  ];
-
-  const final = [
-    { id: "FINAL", a: picks["SF-1"], b: picks["SF-2"], winner: picks.FINAL }
-  ];
-
-  return (
-    <div className="readonly-bracket">
-      <div className="readonly-round">
-        <h4>Round of 32</h4>
-        {orderRoundOf32ForBracket(roundOf32).map(match => (
-          <ReadOnlyBracketMatch
-            key={match.id}
-            id={match.id}
-            a={match.a}
-            b={match.b}
-            winner={picks[match.id]}
-          />
-        ))}
-      </div>
-
-      <div className="readonly-round">
-        <h4>Round of 16</h4>
-        {roundOf16.map(match => (
-          <ReadOnlyBracketMatch
-            key={match.id}
-            id={match.id}
-            a={match.a}
-            b={match.b}
-            winner={match.winner}
-          />
-        ))}
-      </div>
-
-      <div className="readonly-round">
-        <h4>Quarterfinals</h4>
-        {quarterFinals.map(match => (
-          <ReadOnlyBracketMatch
-            key={match.id}
-            id={match.id}
-            a={match.a}
-            b={match.b}
-            winner={match.winner}
-          />
-        ))}
-      </div>
-
-      <div className="readonly-round">
-        <h4>Semifinals</h4>
-        {semiFinals.map(match => (
-          <ReadOnlyBracketMatch
-            key={match.id}
-            id={match.id}
-            a={match.a}
-            b={match.b}
-            winner={match.winner}
-          />
-        ))}
-      </div>
-
-      <div className="readonly-round">
-        <h4>Final</h4>
-        {final.map(match => (
-          <ReadOnlyBracketMatch
-            key={match.id}
-            id={match.id}
-            a={match.a}
-            b={match.b}
-            winner={match.winner}
-          />
-        ))}
-
-        <div className="readonly-champion">
-          <span>Champion</span>
-          <strong>{details.champion || "TBD"}</strong><strong>
-            <TeamName team={details.champion || "TBD"} />
-          </strong>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function GuessDetail({ submission, onBack }) {
+function GuessDetail({ submission, onBack, backLabel = "← Back to all guesses" }) {
   const details = getSubmissionDetails(submission);
 
   return (
     <section className="panel">
       <button className="secondary back-button" type="button" onClick={onBack}>
-        ← Back to all guesses
+        {backLabel}
       </button>
 
       <div className="detail-hero">
@@ -877,31 +815,30 @@ function GuessDetail({ submission, onBack }) {
         </section>
 
         <section className="detail-card">
-          <h3>Knockout bracket</h3>
-          <p className="muted">
-            Highlighted teams are the winners picked by this user.
-          </p>
-
-          <PredictionBracket details={details} />
+          <FifaBracketDisplay
+            bracketRows={buildPredictedBracketRows(details)}
+            title="Knockout bracket"
+            description="Highlighted teams are the winners picked by this user."
+          />
         </section>
       </div>
     </section>
   );
 }
 
-function ActualBracketDisplay({ actualBracketRows }) {
-  const byMatchId = normalizeActualBracketRows(actualBracketRows);
+function FifaBracketDisplay({ bracketRows, title, description }) {
+  const byMatchId = normalizeActualBracketRows(bracketRows);
 
   return (
     <section className="actual-bracket-section">
-      <div className="section-heading compact-heading">
-        <div>
-          <h3>Current tournament bracket</h3>
-          <p>
-            Will be updated as teams advance and matches are played.
-          </p>
+      {(title || description) && (
+        <div className="section-heading compact-heading">
+          <div>
+            {title && <h3>{title}</h3>}
+            {description && <p>{description}</p>}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="actual-bracket-scroll">
         <div className="actual-bracket-fifa compact-center-bracket">
@@ -958,11 +895,22 @@ function ActualBracketDisplay({ actualBracketRows }) {
   );
 }
 
+function ActualBracketDisplay({ actualBracketRows }) {
+  return (
+    <FifaBracketDisplay
+      bracketRows={actualBracketRows}
+      title="Current tournament bracket"
+      description="Will be updated as teams advance and matches are played."
+    />
+  );
+}
+
 function Leaderboard({ submitUrl }) {
   const [loading, setLoading] = useState(false);
   const [actualBracketRows, setActualBracketRows] = useState([]);
   const [leaderboardRows, setLeaderboardRows] = useState([]);
   const [actualResults, setActualResults] = useState(null);
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [error, setError] = useState("");
 
   async function loadLeaderboard() {
@@ -1029,13 +977,23 @@ function Leaderboard({ submitUrl }) {
     loadLeaderboard();
   }, [submitUrl]);
 
+  if (selectedSubmission) {
+    return (
+      <GuessDetail
+        submission={selectedSubmission}
+        onBack={() => setSelectedSubmission(null)}
+        backLabel="← Back to leaderboard"
+      />
+    );
+  }
+
   return (
     <section className="panel">
       <div className="section-heading">
         <div>
           <h2>Leaderboard</h2>
           <p>
-            Scores calculated as results come in. See live-ish bracket below.
+            Scores calculated as results come in. Click a row to view that prediction.
           </p>
         </div>
 
@@ -1085,7 +1043,11 @@ function Leaderboard({ submitUrl }) {
 
             <tbody>
               {leaderboardRows.map((row, index) => (
-                <tr key={`${row.submission.name}-${index}`}>
+                <tr
+                  key={`${row.submission.name}-${index}`}
+                  className="clickable-row"
+                  onClick={() => setSelectedSubmission(row.submission)}
+                >
                   <td className="rank-cell">{index + 1}</td>
                   <td>{row.submission.name || "Unknown"}</td>
                   <td className="total-cell">{row.total}</td>

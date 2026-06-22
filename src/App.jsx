@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const GROUPS = {
   A: ["Mexico", "South Korea", "South Africa", "Czechia"],
-  B: ["Canada", "Switzerland", "Qatar", "Bosnia-Herzegovina"],
+  B: ["Canada", "Switzerland", "Qatar", "Bosnia and Herzegovina"],
   C: ["Brazil", "Morocco", "Scotland", "Haiti"],
   D: ["United States", "Paraguay", "Australia", "Türkiye"],
   E: ["Germany", "Ecuador", "Ivory Coast", "Curaçao"],
@@ -26,6 +26,7 @@ const TEAM_FLAGS = {
   "Switzerland": "🇨🇭",
   "Qatar": "🇶🇦",
   "Bosnia and Herzegovina": "🇧🇦",
+  "Bosnia-Herzegovina": "🇧🇦",
   "Brazil": "🇧🇷",
   "Morocco": "🇲🇦",
   "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",

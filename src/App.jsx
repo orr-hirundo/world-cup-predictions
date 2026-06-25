@@ -1177,10 +1177,23 @@ function AllGuesses({ submitUrl }) {
   );
 }
 
+// --- App Helpers ---
+
+function getInitialTab() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+
+  if (["submit", "guesses", "leaderboard"].includes(tab)) {
+    return tab;
+  }
+
+  return "submit";
+}
+
 // --- App ---
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("submit");
+  const [activeTab, setActiveTab] = useState(getInitialTab);
   const submitUrl = import.meta.env.VITE_SUBMIT_URL;
   const [annexC, setAnnexC] = useState([]);
   const [annexCStatus, setAnnexCStatus] = useState("");
@@ -1193,6 +1206,11 @@ export default function App() {
   const [previousSubmissions, setPreviousSubmissions] = useState([]);
   const [loadingPreviousSubmissions, setLoadingPreviousSubmissions] = useState(false);
   const [previousSubmissionStatus, setPreviousSubmissionStatus] = useState("");
+
+  function changeTab(tab) {
+    setActiveTab(tab);
+    window.history.replaceState(null, "", `?tab=${tab}`);
+  }
 
   const allRankingsValid = Object.values(rankings).every(rankingIsValid);
 
@@ -1228,6 +1246,21 @@ export default function App() {
     loadAnnexC();
   }, [submitUrl]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+  
+    if (tab !== "leaderboard" || window.location.hash !== "#leaderboard") {
+      return;
+    }
+  
+    requestAnimationFrame(() => {
+      document.getElementById("leaderboard")?.scrollIntoView({
+        block: "start"
+      });
+    });
+  }, [activeTab]);
+  
   async function loadPreviousSubmissions() {
     try {
       setLoadingPreviousSubmissions(true);
@@ -1416,7 +1449,7 @@ export default function App() {
         <button
           type="button"
           className={activeTab === "submit" ? "tab active-tab" : "tab"}
-          onClick={() => setActiveTab("submit")}
+          onClick={() => changeTab("submit")}
         >
           Submit Guess
         </button>
@@ -1424,7 +1457,7 @@ export default function App() {
         <button
           type="button"
           className={activeTab === "guesses" ? "tab active-tab" : "tab"}
-          onClick={() => setActiveTab("guesses")}
+          onClick={() => changeTab("guesses")}
         >
           All Guesses
         </button>
@@ -1432,7 +1465,7 @@ export default function App() {
         <button
           type="button"
           className={activeTab === "leaderboard" ? "tab active-tab" : "tab"}
-          onClick={() => setActiveTab("leaderboard")}
+          onClick={() => changeTab("leaderboard")}
         >
           Leaderboard
         </button>
@@ -1444,7 +1477,9 @@ export default function App() {
       )}
       
       {activeTab === "leaderboard" && (
-        <Leaderboard submitUrl={submitUrl} />
+        <div id="leaderboard">
+          <Leaderboard submitUrl={submitUrl} />
+        </div>
       )}
 
       {activeTab === "submit" && (

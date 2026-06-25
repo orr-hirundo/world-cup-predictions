@@ -1026,42 +1026,44 @@ function Leaderboard({ submitUrl }) {
       )}
 
       {!loading && !error && leaderboardRows.length > 0 && (
-        <div className="guess-table-wrap">
-          <table className="guess-table leaderboard-table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Name</th>
-                <th>Total</th>
-                <th>R32</th>
-                <th>R16</th>
-                <th>QF</th>
-                <th>SF</th>
-                <th>Final</th>
-                <th>Champion</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {leaderboardRows.map((row, index) => (
-                <tr
-                  key={`${row.submission.name}-${index}`}
-                  className="clickable-row"
-                  onClick={() => setSelectedSubmission(row.submission)}
-                >
-                  <td className="rank-cell">{index + 1}</td>
-                  <td>{row.submission.name || "Unknown"}</td>
-                  <td className="total-cell">{row.total}</td>
-                  <td>{row.roundScores.R32.points}</td>
-                  <td>{row.roundScores.R16.points}</td>
-                  <td>{row.roundScores.QF.points}</td>
-                  <td>{row.roundScores.SF.points}</td>
-                  <td>{row.roundScores.FINAL.points}</td>
-                  <td>{row.roundScores.CHAMPION.points}</td>
+        <div id="leaderboard">
+          <div className="guess-table-wrap">
+            <table className="guess-table leaderboard-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Name</th>
+                  <th>Total</th>
+                  <th>R32</th>
+                  <th>R16</th>
+                  <th>QF</th>
+                  <th>SF</th>
+                  <th>Final</th>
+                  <th>Champion</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {leaderboardRows.map((row, index) => (
+                  <tr
+                    key={`${row.submission.name}-${index}`}
+                    className="clickable-row"
+                    onClick={() => setSelectedSubmission(row.submission)}
+                  >
+                    <td className="rank-cell">{index + 1}</td>
+                    <td>{row.submission.name || "Unknown"}</td>
+                    <td className="total-cell">{row.total}</td>
+                    <td>{row.roundScores.R32.points}</td>
+                    <td>{row.roundScores.R16.points}</td>
+                    <td>{row.roundScores.QF.points}</td>
+                    <td>{row.roundScores.SF.points}</td>
+                    <td>{row.roundScores.FINAL.points}</td>
+                    <td>{row.roundScores.CHAMPION.points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1260,7 +1262,7 @@ export default function App() {
       });
     });
   }, [activeTab]);
-  
+
   async function loadPreviousSubmissions() {
     try {
       setLoadingPreviousSubmissions(true);
@@ -1477,9 +1479,7 @@ export default function App() {
       )}
       
       {activeTab === "leaderboard" && (
-        <div id="leaderboard">
-          <Leaderboard submitUrl={submitUrl} />
-        </div>
+        <Leaderboard submitUrl={submitUrl} />
       )}
 
       {activeTab === "submit" && (
